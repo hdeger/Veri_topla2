@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bina Veri Toplama</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 20px;
+        }
+        .step {
+            display: none;
+        }
+        .step.active {
+            display: block;
+        }
+        .step-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        #map {
+            width: 100%;
+            height: 300px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        .coords-display {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        .camera-container {
+            text-align: center;
+        }
+        #video {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        #canvas {
+            display: none;
+        }
+        #photoPreview {
+            width: 100%;
+            max-width: 400px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 10px;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .question-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .question-image {
+            width: 100%;
+            height: 150px;
+            background: #e9ecef;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            color: #6c757d;
+            font-size: 14px;
+            text-align: center;
+            padding: 10px;
+        }
+        .question-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .options {
+            display: flex;
+            gap: 10px;
+        }
+        .option-btn {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        .option-btn.selected {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        .progress {
+            background: #e9ecef;
+            height: 8px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100%;
+            transition: width 0.3s;
+        }
+        .data-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .data-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .data-item-header {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        .data-item-info {
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #6c757d;
+        }
+        .alert {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏢 Bina Veri Toplama</h1>
+            <p>Saha Veri Toplama Sistemi</p>
+        </div>
+        
+        <div class="content">
+            <!-- Adım 1: Konum Seçimi -->
+            <div class="step active" id="step1">
+                <div class="step-title">📍 Adım 1: Bina Konumunu Seçin</div>
+                <div class="alert">Haritadan binanın konumuna tıklayarak koordinatları işaretleyin</div>
+                <div id="map"></div>
+                <div class="coords-display" id="coordsDisplay">
+                    Konum seçilmedi
+                </div>
+                <button class="btn btn-primary" onclick="nextStep()" id="nextBtn1" disabled>Devam Et</button>
+            </div>
+
+            <!-- Adım 2: Fotoğraf Çekimi -->
+            <div class="step" id="step2">
+                <div class="step-title">📸 Adım 2: Bina Fotoğrafı Çekin</div>
+                <div class="camera-container">
+                    <video id="video" autoplay playsinline></video>
+                    <img id="photoPreview" />
+                    <canvas id="canvas"></canvas>
+                    <button class="btn btn-primary" onclick="startCamera()" id="startCameraBtn">Kamerayı Aç</button>
+                    <button class="btn btn-success" onclick="takePhoto()" id="takePhotoBtn" style="display:none;">Fotoğraf Çek</button>
+                    <button class="btn btn-secondary" onclick="retakePhoto()" id="retakeBtn" style="display:none;">Yeniden Çek</button>
+                </div>
+                <button class="btn btn-primary" onclick="nextStep()" id="nextBtn2" disabled style="margin-top:10px;">Devam Et</button>
+                <button class="btn btn-secondary" onclick="prevStep()">Geri</button>
+            </div>
+
+            <!-- Adım 3: Sorular -->
+            <div class="step" id="step3">
+                <div class="step-title">📋 Adım 3: Değerlendirme Soruları</div>
+                <div class="progress">
+                    <div class="progress-bar" id="progressBar" style="width: 0%"></div>
+                </div>
+                
+                <div id="questionsContainer"></div>
+                
+                <button class="btn btn-primary" onclick="nextStep()" id="nextBtn3" disabled>Devam Et</button>
+                <button class="btn btn-secondary" onclick="prevStep()">Geri</button>
+            </div>
+
+            <!-- Adım 4: Kaydetme -->
+            <div class="step" id="step4">
+                <div class="step-title">✅ Kaydet ve Yeni Bina</div>
+                <div class="alert">Veriler başarıyla kaydedildi! Yeni bir bina ekleyebilir veya verileri Excel'e aktarabilirsiniz.</div>
+                
+                <button class="btn btn-success" onclick="saveAndNew()">Yeni Bina Ekle</button>
+                <button class="btn btn-primary" onclick="viewData()">Toplanan Verileri Gör</button>
+            </div>
+
+            <!-- Adım 5: Veri Listesi -->
+            <div class="step" id="step5">
+                <div class="step-title">📊 Toplanan Veriler</div>
+                <div id="dataList" class="data-list"></div>
+                <button class="btn btn-success" onclick="exportToExcel()">Excel'e Aktar</button>
+                <button class="btn btn-primary" onclick="saveAndNew()">Yeni Bina Ekle</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global değişkenler
+        let map, marker;
+        let currentData = {
+            lat: null,
+            lng: null,
+            photo: null,
+            answers: {},
+            datetime: null
+        };
+        let allData = [];
+        let currentStep = 1;
+        let stream = null;
+
+        // Sorular (Siz buraya istediğiniz kadar soru ekleyebilirsiniz)
+        const questions = [
+            {
+                id: 1,
+                text: "Bina malzeme kalitesi nasıl?",
+                options: ["İyi", "Kötü"],
+                helpImage: "Yapı malzemesinin durumunu değerlendirin"
+            },
+            {
+                id: 2,
+                text: "Binada zayıf kat var mı?",
+                options: ["Var", "Yok"],
+                helpImage: "Zemin kat dükkan vb. açıklıklar kontrol edin"
+            },
+            {
+                id: 3,
+                text: "Bina planı düzenli mi?",
+                options: ["Düzenli", "Düzensiz"],
+                helpImage: "Çıkıntı, girinti kontrolü yapın"
+            }
+        ];
+
+        // Harita başlatma
+        function initMap() {
+            // Varsayılan konum (GPS bulunamazsa)
+            map = L.map('map').setView([37.5, 37.0], 16);
+            
+            // Uydu görünümü katmanı
+            const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles © Esri'
+            });
+            
+            // Normal harita katmanı
+            const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            });
+            
+            // Varsayılan olarak uydu görünümünü ekle
+            satellite.addTo(map);
+            
+            // Katman kontrolü ekle (kullanıcı uydu/sokak arası geçiş yapabilir)
+            const baseMaps = {
+                "Uydu Görünümü": satellite,
+                "Sokak Haritası": street
+            };
+            L.control.layers(baseMaps).addTo(map);
+            
+            // Kullanıcının GPS konumunu al
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        
+                        // Haritayı kullanıcının konumuna taşı
+                        map.setView([lat, lng], 18);
+                        
+                        // Kullanıcının konumunu işaretle (mavi nokta)
+                        L.circleMarker([lat, lng], {
+                            color: '#4285F4',
+                            fillColor: '#4285F4',
+                            fillOpacity: 0.8,
+                            radius: 8
+                        }).addTo(map).bindPopup('Konumunuz');
+                        
+                        console.log('GPS konumu alındı:', lat, lng);
+                    },
+                    function(error) {
+                        console.warn('GPS erişimi başarısız:', error.message);
+                        alert('GPS konumu alınamadı. Lütfen konum izni verin veya GPS\'i açın.');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } else {
+                console.warn('Tarayıcı GPS desteklemiyor');
+            }
+
+            map.on('click', function(e) {
+                if (marker) {
+                    map.removeLayer(marker);
+                }
+                marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
+                currentData.lat = e.latlng.lat;
+                currentData.lng = e.latlng.lng;
+                document.getElementById('coordsDisplay').innerHTML = 
+                    `<strong>Seçilen Konum:</strong><br>Enlem: ${e.latlng.lat.toFixed(6)}, Boylam: ${e.latlng.lng.toFixed(6)}`;
+                document.getElementById('nextBtn1').disabled = false;
+            });
+        }
+
+        // Kamera fonksiyonları
+        async function startCamera() {
+            try {
+                // Kamera izni kontrolü
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    alert('Kamera desteği mevcut değil. Lütfen HTTPS bağlantısı kullanın.');
+                    return;
+                }
+                
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    } 
+                });
+                const video = document.getElementById('video');
+                video.srcObject = stream;
+                video.style.display = 'block';
+                document.getElementById('startCameraBtn').style.display = 'none';
+                document.getElementById('takePhotoBtn').style.display = 'block';
+            } catch (err) {
+                if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    alert('Kamera erişimi reddedildi. Lütfen tarayıcı ayarlarından kamera iznini verin.\n\nNot: Uygulama HTTPS üzerinden açılmalıdır (GitHub Pages veya Netlify kullanın).');
+                } else if (err.name === 'NotFoundError') {
+                    alert('Kamera bulunamadı. Lütfen cihazınızın kamerası olduğundan emin olun.');
+                } else {
+                    alert('Kamera erişimi başarısız: ' + err.message + '\n\nLütfen uygulamayı HTTPS bağlantısı üzerinden açın (GitHub Pages veya Netlify).');
+                }
+                console.error('Kamera hatası:', err);
+            }
+        }
+
+        function takePhoto() {
+            const video = document.getElementById('video');
+            const canvas = document.getElementById('canvas');
+            const preview = document.getElementById('photoPreview');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            currentData.photo = canvas.toDataURL('image/jpeg', 0.8);
+            preview.src = currentData.photo;
+            preview.style.display = 'block';
+            
+            video.style.display = 'none';
+            document.getElementById('takePhotoBtn').style.display = 'none';
+            document.getElementById('retakeBtn').style.display = 'block';
+            document.getElementById('nextBtn2').disabled = false;
+            
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+        }
+
+        function retakePhoto() {
+            document.getElementById('photoPreview').style.display = 'none';
+            document.getElementById('retakeBtn').style.display = 'none';
+            document.getElementById('startCameraBtn').style.display = 'block';
+            document.getElementById('nextBtn2').disabled = true;
+            currentData.photo = null;
+        }
+
+        // Soruları render et
+        function renderQuestions() {
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = '';
+            
+            questions.forEach((q, index) => {
+                const card = document.createElement('div');
+                card.className = 'question-card';
+                card.innerHTML = `
+                    <div class="question-image">${q.helpImage}</div>
+                    <div class="question-text">${index + 1}. ${q.text}</div>
+                    <div class="options">
+                        ${q.options.map(opt => 
+                            `<button class="option-btn" onclick="selectAnswer(${q.id}, '${opt}')">${opt}</button>`
+                        ).join('')}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function selectAnswer(questionId, answer) {
+            currentData.answers[questionId] = answer;
+            
+            // Seçili butonu vurgula
+            event.target.parentElement.querySelectorAll('.option-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            event.target.classList.add('selected');
+            
+            // İlerlemeyi güncelle
+            const progress = (Object.keys(currentData.answers).length / questions.length) * 100;
+            document.getElementById('progressBar').style.width = progress + '%';
+            
+            // Tüm sorular cevaplanmışsa devam butonunu aktif et
+            if (Object.keys(currentData.answers).length === questions.length) {
+                document.getElementById('nextBtn3').disabled = false;
+            }
+        }
+
+        // Adım geçişleri
+        function nextStep() {
+            document.getElementById('step' + currentStep).classList.remove('active');
+            currentStep++;
+            
+            if (currentStep === 3) {
+                renderQuestions();
+            }
+            
+            if (currentStep === 4) {
+                saveCurrentData();
+            }
+            
+            document.getElementById('step' + currentStep).classList.add('active');
+        }
+
+        function prevStep() {
+            document.getElementById('step' + currentStep).classList.remove('active');
+            currentStep--;
+            document.getElementById('step' + currentStep).classList.add('active');
+        }
+
+        // Veri kaydetme
+        function saveCurrentData() {
+            currentData.datetime = new Date().toLocaleString('tr-TR');
+            allData.push({...currentData});
+            console.log('Veri kaydedildi:', currentData);
+        }
+
+        function saveAndNew() {
+            // Verileri sıfırla
+            currentData = {
+                lat: null,
+                lng: null,
+                photo: null,
+                answers: {},
+                datetime: null
+            };
+            
+            // Haritayı temizle
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            document.getElementById('coordsDisplay').innerHTML = 'Konum seçilmedi';
+            document.getElementById('nextBtn1').disabled = true;
+            
+            // Fotoğrafı temizle
+            document.getElementById('photoPreview').style.display = 'none';
+            document.getElementById('startCameraBtn').style.display = 'block';
+            document.getElementById('retakeBtn').style.display = 'none';
+            document.getElementById('takePhotoBtn').style.display = 'none';
+            document.getElementById('nextBtn2').disabled = true;
+            
+            // Soruları temizle
+            document.getElementById('nextBtn3').disabled = true;
+            document.getElementById('progressBar').style.width = '0%';
+            
+            // İlk adıma dön
+            document.getElementById('step' + currentStep).classList.remove('active');
+            currentStep = 1;
+            document.getElementById('step1').classList.add('active');
+        }
+
+        function viewData() {
+            const dataList = document.getElementById('dataList');
+            
+            if (allData.length === 0) {
+                dataList.innerHTML = '<div class="empty-state">Henüz veri toplanmadı</div>';
+            } else {
+                dataList.innerHTML = allData.map((data, index) => `
+                    <div class="data-item">
+                        <div class="data-item-header">Bina ${index + 1}</div>
+                        <div class="data-item-info">
+                            <strong>Tarih:</strong> ${data.datetime}<br>
+                            <strong>Konum:</strong> ${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}<br>
+                            <strong>Cevaplar:</strong> ${Object.values(data.answers).join(', ')}
+                        </div>
+                    </div>
+                `).join('');
+            }
+            
+            document.getElementById('step' + currentStep).classList.remove('active');
+            currentStep = 5;
+            document.getElementById('step5').classList.add('active');
+        }
+
+        // Excel'e aktar
+        function exportToExcel() {
+            if (allData.length === 0) {
+                alert('Henüz veri yok!');
+                return;
+            }
+            
+            const ws_data = [
+                ['Bina No', 'Tarih-Saat', 'Enlem', 'Boylam', ...questions.map(q => q.text), 'Fotoğraf Dosyası']
+            ];
+            
+            allData.forEach((data, index) => {
+                const row = [
+                    index + 1,
+                    data.datetime,
+                    data.lat,
+                    data.lng,
+                    ...questions.map(q => data.answers[q.id] || '-'),
+                    data.photo ? `bina_${index + 1}.jpg` : 'Yok'
+                ];
+                ws_data.push(row);
+            });
+            
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            XLSX.utils.book_append_sheet(wb, ws, 'Bina Verileri');
+            
+            const timestamp = new Date().getTime();
+            XLSX.writeFile(wb, 'bina_verileri_' + timestamp + '.xlsx');
+            
+            // Fotoğrafları ZIP olarak indir
+            setTimeout(() => {
+                downloadPhotosAsZip(timestamp);
+            }, 500);
+        }
+        
+        // Fotoğrafları ZIP olarak indir
+        async function downloadPhotosAsZip(timestamp) {
+            // JSZip kütüphanesini dinamik yükle
+            if (typeof JSZip === 'undefined') {
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                script.onload = () => createZip(timestamp);
+                document.head.appendChild(script);
+            } else {
+                createZip(timestamp);
+            }
+        }
+        
+        function createZip(timestamp) {
+            const zip = new JSZip();
+            const photosFolder = zip.folder("fotograflar");
+            
+            let photoCount = 0;
+            allData.forEach((data, index) => {
+                if (data.photo) {
+                    // Base64'ten binary'ye çevir
+                    const base64Data = data.photo.split(',')[1];
+                    photosFolder.file(`bina_${index + 1}.jpg`, base64Data, {base64: true});
+                    photoCount++;
+                }
+            });
+            
+            if (photoCount === 0) {
+                alert('Hiç fotoğraf yok!');
+                return;
+            }
+            
+            // ZIP dosyasını oluştur ve indir
+            zip.generateAsync({type: "blob"}).then(function(content) {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = 'fotograflar_' + timestamp + '.zip';
+                link.click();
+                
+                alert(`✅ İndirme tamamlandı!\n\n📊 Excel: bina_verileri_${timestamp}.xlsx\n📦 Fotoğraflar: fotograflar_${timestamp}.zip\n\nİki dosyayı da gönderin!`);
+            });
+        }
+
+        // Sayfa yüklendiğinde haritayı başlat
+        window.onload = function() {
+            initMap();
+        };
+    </script>
+</body>
+</html>
