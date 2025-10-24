@@ -361,6 +361,7 @@
             userName: ''
         };
         let allData = [];
+        let savedMarkers = []; // Kaydedilmiş binaların marker'larını tutacak
         let currentStep = 'login';
         let stream = null;
         let userName = '';
@@ -571,6 +572,35 @@
             }
         }
 
+        // Kaydedilmiş binaları haritada göster
+        function addSavedBuildingMarker(lat, lng, buildingNumber) {
+            // Yeşil renkli, numaralı marker oluştur
+            const greenIcon = L.divIcon({
+                className: 'custom-div-icon',
+                html: `<div style="background-color: #28a745; color: white; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">${buildingNumber}</div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            });
+            
+            const savedMarker = L.marker([lat, lng], { icon: greenIcon })
+                .addTo(map)
+                .bindPopup(`<b>Bina ${buildingNumber}</b><br>Kaydedildi ✓`);
+            
+            savedMarkers.push(savedMarker);
+        }
+
+        // Tüm kaydedilmiş binaları haritada göster
+        function showAllSavedBuildings() {
+            // Önce mevcut kaydedilmiş marker'ları temizle
+            savedMarkers.forEach(m => map.removeLayer(m));
+            savedMarkers = [];
+            
+            // Tüm kaydedilmiş binaları tekrar ekle
+            allData.forEach((data, index) => {
+                addSavedBuildingMarker(data.lat, data.lng, index + 1);
+            });
+        }
+
         // Kamera fonksiyonları
         async function startCamera() {
             try {
@@ -704,6 +734,10 @@
             currentData.datetime = new Date().toLocaleString('tr-TR');
             currentData.userName = userName;
             allData.push({...currentData});
+            
+            // Kaydedilen binayı haritaya kalıcı marker olarak ekle
+            addSavedBuildingMarker(currentData.lat, currentData.lng, allData.length);
+            
             console.log('Veri kaydedildi:', currentData);
         }
 
@@ -740,6 +774,8 @@
             setTimeout(() => {
                 if (map) {
                     map.invalidateSize();
+                    // Kaydedilmiş tüm binaları göster
+                    showAllSavedBuildings();
                     if (myLocation) {
                         map.setView([myLocation.lat, myLocation.lng], 18);
                     }
@@ -756,105 +792,4 @@
                 dataList.innerHTML = allData.map((data, index) => `
                     <div class="data-item">
                         <div class="data-item-header">Bina ${index + 1}</div>
-                        <div class="data-item-info">
-                            <strong>Kullanıcı:</strong> ${data.userName}<br>
-                            <strong>Tarih:</strong> ${data.datetime}<br>
-                            <strong>Konum:</strong> ${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}<br>
-                            <strong>Cevaplar:</strong> ${Object.values(data.answers).join(', ')}
-                        </div>
-                    </div>
-                `).join('');
-            }
-            
-            document.getElementById('step' + currentStep).classList.remove('active');
-            currentStep = 5;
-            document.getElementById('step5').classList.add('active');
-        }
-
-        // Excel'e aktar
-        function exportToExcel() {
-            if (allData.length === 0) {
-                alert('Henüz veri yok!');
-                return;
-            }
-            
-            const ws_data = [
-                ['Bina No', 'Kullanıcı', 'Tarih-Saat', 'Enlem', 'Boylam', ...questions.map(q => q.text), 'Fotoğraf Dosyası']
-            ];
-            
-            allData.forEach((data, index) => {
-                const row = [
-                    index + 1,
-                    data.userName || userName,
-                    data.datetime,
-                    data.lat,
-                    data.lng,
-                    ...questions.map(q => data.answers[q.id] || '-'),
-                    data.photo ? `bina_${index + 1}.jpg` : 'Yok'
-                ];
-                ws_data.push(row);
-            });
-            
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.aoa_to_sheet(ws_data);
-            XLSX.utils.book_append_sheet(wb, ws, 'Bina Verileri');
-            
-            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
-            const safeUserName = userName.replace(/\s+/g, '_');
-            const filename = `${safeUserName}_bina_verileri_${timestamp}`;
-            XLSX.writeFile(wb, filename + '.xlsx');
-            
-            setTimeout(() => {
-                downloadPhotosAsZip(timestamp);
-            }, 500);
-        }
-        
-        // Fotoğrafları ZIP olarak indir
-        async function downloadPhotosAsZip(timestamp) {
-            if (typeof JSZip === 'undefined') {
-                const script = document.createElement('script');
-                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-                script.onload = () => createZip(timestamp);
-                document.head.appendChild(script);
-            } else {
-                createZip(timestamp);
-            }
-        }
-        
-        function createZip(timestamp) {
-            const zip = new JSZip();
-            const photosFolder = zip.folder("fotograflar");
-            
-            let photoCount = 0;
-            allData.forEach((data, index) => {
-                if (data.photo) {
-                    const base64Data = data.photo.split(',')[1];
-                    photosFolder.file(`bina_${index + 1}.jpg`, base64Data, {base64: true});
-                    photoCount++;
-                }
-            });
-            
-            if (photoCount === 0) {
-                alert('Hiç fotoğraf yok!');
-                return;
-            }
-            
-            const safeUserName = userName.replace(/\s+/g, '_');
-            const zipFilename = `${safeUserName}_fotograflar_${timestamp}`;
-            zip.generateAsync({type: "blob"}).then(function(content) {
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(content);
-                link.download = zipFilename + '.zip';
-                link.click();
-                
-                alert(`✅ İndirme tamamlandı!\n\n📊 Excel: ${safeUserName}_bina_verileri_${timestamp}.xlsx\n📦 Fotoğraflar: ${zipFilename}.zip\n\nİki dosyayı da gönderin!`);
-            });
-        }
-
-        // Sayfa yüklendiğinde haritayı başlat
-        window.onload = function() {
-            initMap();
-        };
-    </script>
-</body>
-</html>
+                        <div class="
