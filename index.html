@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -128,17 +129,20 @@
         }
         .question-image {
             width: 100%;
-            height: 150px;
+            min-height: 150px;
             background: #e9ecef;
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin-bottom: 15px;
-            color: #6c757d;
-            font-size: 14px;
-            text-align: center;
             padding: 10px;
+            border: 2px solid #dee2e6;
+        }
+        .question-image img {
+            max-width: 100%;
+            max-height: 200px;
+            object-fit: contain;
         }
         .question-text {
             font-size: 18px;
@@ -147,18 +151,18 @@
             margin-bottom: 15px;
         }
         .options {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
             gap: 10px;
         }
         .option-btn {
-            flex: 1;
-            padding: 15px;
+            padding: 15px 10px;
             border: 2px solid #dee2e6;
             border-radius: 8px;
             background: white;
             cursor: pointer;
             transition: all 0.3s;
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 500;
         }
         .option-btn.selected {
@@ -211,6 +215,57 @@
             margin-bottom: 15px;
             font-size: 14px;
         }
+        .login-screen {
+            padding: 40px 20px;
+            text-align: center;
+        }
+        .login-screen h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .login-screen p {
+            color: #6c757d;
+            margin-bottom: 30px;
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .gps-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .gps-button:hover {
+            background: #667eea;
+            color: white;
+        }
+        .gps-button:active {
+            transform: scale(0.95);
+        }
+        #map-container {
+            position: relative;
+        }
     </style>
 </head>
 <body>
@@ -221,11 +276,26 @@
         </div>
         
         <div class="content">
+            <!-- Giriş Ekranı -->
+            <div class="step active" id="loginScreen">
+                <div class="login-screen">
+                    <h2>📋 Veri Toplama Başlangıç</h2>
+                    <p>Lütfen bilgilerinizi girin</p>
+                    <div class="input-group">
+                        <input type="text" id="userNameInput" placeholder="Ad Soyad" />
+                    </div>
+                    <button class="btn btn-primary" onclick="startDataCollection()">Başla</button>
+                </div>
+            </div>
+
             <!-- Adım 1: Konum Seçimi -->
-            <div class="step active" id="step1">
+            <div class="step" id="step1">
                 <div class="step-title">📍 Adım 1: Bina Konumunu Seçin</div>
                 <div class="alert">Haritadan binanın konumuna tıklayarak koordinatları işaretleyin</div>
-                <div id="map"></div>
+                <div id="map-container">
+                    <button class="gps-button" onclick="goToMyLocation()" title="Konumuma Git">📍 GPS</button>
+                    <div id="map"></div>
+                </div>
                 <div class="coords-display" id="coordsDisplay">
                     Konum seçilmedi
                 </div>
@@ -281,88 +351,166 @@
 
     <script>
         // Global değişkenler
-        let map, marker;
+        let map, marker, userLocationMarker;
         let currentData = {
             lat: null,
             lng: null,
             photo: null,
             answers: {},
-            datetime: null
+            datetime: null,
+            userName: ''
         };
         let allData = [];
-        let currentStep = 1;
+        let currentStep = 'login';
         let stream = null;
+        let userName = '';
+        let myLocation = null;
 
-        // Sorular (Siz buraya istediğiniz kadar soru ekleyebilirsiniz)
+        // PLACEHOLDER_IMAGE - Yüklediğiniz resmi buraya koyun
+        const PLACEHOLDER_IMAGE = "https://via.placeholder.com/400x200/667eea/ffffff?text=Resminizi+Buraya+Ekleyin";
+
+        // 12 Soru - İlk 3 soruda resim yok, 4-12'de placeholder resim var
         const questions = [
             {
                 id: 1,
-                text: "Bina malzeme kalitesi nasıl?",
-                options: ["İyi", "Kötü"],
-                helpImage: "Yapı malzemesinin durumunu değerlendirin"
+                text: "Yapı kullanım amacı",
+                options: ["Konut", "Konut+Ticaret", "Ticaret", "Sanayi", "Kamu", "Metruk"],
+                helpImage: null
             },
             {
                 id: 2,
-                text: "Binada zayıf kat var mı?",
-                options: ["Var", "Yok"],
-                helpImage: "Zemin kat dükkan vb. açıklıklar kontrol edin"
+                text: "Görsel kalite durumu",
+                options: ["İyi", "Orta", "Kötü"],
+                helpImage: null
             },
             {
                 id: 3,
-                text: "Bina planı düzenli mi?",
-                options: ["Düzenli", "Düzensiz"],
-                helpImage: "Çıkıntı, girinti kontrolü yapın"
+                text: "Zemin eğimli mi?",
+                options: ["Düz", "Eğimli"],
+                helpImage: null
+            },
+            {
+                id: 4,
+                text: "Yapı türü ne?",
+                options: ["Kolon", "Kolon+Perde"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 5,
+                text: "Zayıf kat var mı?",
+                options: ["Var", "Yok"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 6,
+                text: "Serbest kat adedi",
+                options: ["1-2", "3", "4", "5", "6-7"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 7,
+                text: "Düşeyde düzensizlik var mı?",
+                options: ["Var", "Yok"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 8,
+                text: "Ağır çıkma var mı?",
+                options: ["Var", "Yok"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 9,
+                text: "Planda düzensizlik var mı?",
+                options: ["Var", "Yok"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 10,
+                text: "Kısa kolon var mı?",
+                options: ["Var", "Yok"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 11,
+                text: "Yapı nizam durumu",
+                options: ["Ayrık", "Bitişik", "Köşede bitişik"],
+                helpImage: PLACEHOLDER_IMAGE
+            },
+            {
+                id: 12,
+                text: "Bitişik binalarla döşeme seviyesi",
+                options: ["Aynı", "Farklı"],
+                helpImage: PLACEHOLDER_IMAGE
             }
         ];
 
+        // Kullanıcı girişi
+        function startDataCollection() {
+            const nameInput = document.getElementById('userNameInput');
+            const name = nameInput.value.trim();
+            
+            if (name === '') {
+                alert('Lütfen ad soyad giriniz');
+                nameInput.focus();
+                return;
+            }
+            
+            userName = name;
+            currentData.userName = userName;
+            
+            document.getElementById('loginScreen').classList.remove('active');
+            currentStep = 1;
+            document.getElementById('step1').classList.add('active');
+            
+            setTimeout(() => {
+                if (map) {
+                    map.invalidateSize();
+                }
+            }, 100);
+        }
+
         // Harita başlatma
         function initMap() {
-            // Varsayılan konum (GPS bulunamazsa)
-            map = L.map('map').setView([37.5, 37.0], 16);
+            map = L.map('map').setView([37.1494, 30.5433], 15);
             
-            // Uydu görünümü katmanı
             const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
                 attribution: 'Tiles © Esri'
             });
             
-            // Normal harita katmanı
             const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 attribution: '© OpenStreetMap contributors'
             });
             
-            // Varsayılan olarak uydu görünümünü ekle
             satellite.addTo(map);
             
-            // Katman kontrolü ekle (kullanıcı uydu/sokak arası geçiş yapabilir)
             const baseMaps = {
                 "Uydu Görünümü": satellite,
                 "Sokak Haritası": street
             };
             L.control.layers(baseMaps).addTo(map);
             
-            // Kullanıcının GPS konumunu al
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     function(position) {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
                         
-                        // Haritayı kullanıcının konumuna taşı
+                        myLocation = { lat, lng };
                         map.setView([lat, lng], 18);
                         
-                        // Kullanıcının konumunu işaretle (mavi nokta)
-                        L.circleMarker([lat, lng], {
+                        if (userLocationMarker) {
+                            map.removeLayer(userLocationMarker);
+                        }
+                        userLocationMarker = L.circleMarker([lat, lng], {
                             color: '#4285F4',
                             fillColor: '#4285F4',
                             fillOpacity: 0.8,
                             radius: 8
                         }).addTo(map).bindPopup('Konumunuz');
-                        
-                        console.log('GPS konumu alındı:', lat, lng);
                     },
                     function(error) {
                         console.warn('GPS erişimi başarısız:', error.message);
-                        alert('GPS konumu alınamadı. Lütfen konum izni verin veya GPS\'i açın.');
                     },
                     {
                         enableHighAccuracy: true,
@@ -370,8 +518,6 @@
                         maximumAge: 0
                     }
                 );
-            } else {
-                console.warn('Tarayıcı GPS desteklemiyor');
             }
 
             map.on('click', function(e) {
@@ -387,10 +533,47 @@
             });
         }
 
+        function goToMyLocation() {
+            if (myLocation) {
+                map.setView([myLocation.lat, myLocation.lng], 18);
+            } else {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            const lat = position.coords.latitude;
+                            const lng = position.coords.longitude;
+                            myLocation = { lat, lng };
+                            
+                            map.setView([lat, lng], 18);
+                            
+                            if (userLocationMarker) {
+                                map.removeLayer(userLocationMarker);
+                            }
+                            userLocationMarker = L.circleMarker([lat, lng], {
+                                color: '#4285F4',
+                                fillColor: '#4285F4',
+                                fillOpacity: 0.8,
+                                radius: 8
+                            }).addTo(map).bindPopup('Konumunuz');
+                        },
+                        function(error) {
+                            alert('GPS konumu alınamadı. Lütfen konum izinlerini kontrol edin.');
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 5000,
+                            maximumAge: 0
+                        }
+                    );
+                } else {
+                    alert('GPS desteği mevcut değil');
+                }
+            }
+        }
+
         // Kamera fonksiyonları
         async function startCamera() {
             try {
-                // Kamera izni kontrolü
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                     alert('Kamera desteği mevcut değil. Lütfen HTTPS bağlantısı kullanın.');
                     return;
@@ -410,11 +593,11 @@
                 document.getElementById('takePhotoBtn').style.display = 'block';
             } catch (err) {
                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    alert('Kamera erişimi reddedildi. Lütfen tarayıcı ayarlarından kamera iznini verin.\n\nNot: Uygulama HTTPS üzerinden açılmalıdır (GitHub Pages veya Netlify kullanın).');
+                    alert('Kamera erişimi reddedildi. Lütfen tarayıcı ayarlarından kamera iznini verin.');
                 } else if (err.name === 'NotFoundError') {
-                    alert('Kamera bulunamadı. Lütfen cihazınızın kamerası olduğundan emin olun.');
+                    alert('Kamera bulunamadı.');
                 } else {
-                    alert('Kamera erişimi başarısız: ' + err.message + '\n\nLütfen uygulamayı HTTPS bağlantısı üzerinden açın (GitHub Pages veya Netlify).');
+                    alert('Kamera erişimi başarısız: ' + err.message);
                 }
                 console.error('Kamera hatası:', err);
             }
@@ -459,8 +642,14 @@
             questions.forEach((q, index) => {
                 const card = document.createElement('div');
                 card.className = 'question-card';
+                
+                let imageHtml = '';
+                if (q.helpImage) {
+                    imageHtml = `<div class="question-image"><img src="${q.helpImage}" alt="Yardımcı görsel" /></div>`;
+                }
+                
                 card.innerHTML = `
-                    <div class="question-image">${q.helpImage}</div>
+                    ${imageHtml}
                     <div class="question-text">${index + 1}. ${q.text}</div>
                     <div class="options">
                         ${q.options.map(opt => 
@@ -475,17 +664,14 @@
         function selectAnswer(questionId, answer) {
             currentData.answers[questionId] = answer;
             
-            // Seçili butonu vurgula
             event.target.parentElement.querySelectorAll('.option-btn').forEach(btn => {
                 btn.classList.remove('selected');
             });
             event.target.classList.add('selected');
             
-            // İlerlemeyi güncelle
             const progress = (Object.keys(currentData.answers).length / questions.length) * 100;
             document.getElementById('progressBar').style.width = progress + '%';
             
-            // Tüm sorular cevaplanmışsa devam butonunu aktif et
             if (Object.keys(currentData.answers).length === questions.length) {
                 document.getElementById('nextBtn3').disabled = false;
             }
@@ -516,42 +702,49 @@
         // Veri kaydetme
         function saveCurrentData() {
             currentData.datetime = new Date().toLocaleString('tr-TR');
+            currentData.userName = userName;
             allData.push({...currentData});
             console.log('Veri kaydedildi:', currentData);
         }
 
         function saveAndNew() {
-            // Verileri sıfırla
             currentData = {
                 lat: null,
                 lng: null,
                 photo: null,
                 answers: {},
-                datetime: null
+                datetime: null,
+                userName: userName
             };
             
-            // Haritayı temizle
             if (marker) {
                 map.removeLayer(marker);
             }
             document.getElementById('coordsDisplay').innerHTML = 'Konum seçilmedi';
             document.getElementById('nextBtn1').disabled = true;
             
-            // Fotoğrafı temizle
             document.getElementById('photoPreview').style.display = 'none';
             document.getElementById('startCameraBtn').style.display = 'block';
             document.getElementById('retakeBtn').style.display = 'none';
             document.getElementById('takePhotoBtn').style.display = 'none';
             document.getElementById('nextBtn2').disabled = true;
             
-            // Soruları temizle
             document.getElementById('nextBtn3').disabled = true;
             document.getElementById('progressBar').style.width = '0%';
             
-            // İlk adıma dön
             document.getElementById('step' + currentStep).classList.remove('active');
             currentStep = 1;
             document.getElementById('step1').classList.add('active');
+            
+            // Harita boyutlarını yeniden hesapla ve konumu ayarla
+            setTimeout(() => {
+                if (map) {
+                    map.invalidateSize();
+                    if (myLocation) {
+                        map.setView([myLocation.lat, myLocation.lng], 18);
+                    }
+                }
+            }, 100);
         }
 
         function viewData() {
@@ -564,6 +757,7 @@
                     <div class="data-item">
                         <div class="data-item-header">Bina ${index + 1}</div>
                         <div class="data-item-info">
+                            <strong>Kullanıcı:</strong> ${data.userName}<br>
                             <strong>Tarih:</strong> ${data.datetime}<br>
                             <strong>Konum:</strong> ${data.lat.toFixed(6)}, ${data.lng.toFixed(6)}<br>
                             <strong>Cevaplar:</strong> ${Object.values(data.answers).join(', ')}
@@ -585,12 +779,13 @@
             }
             
             const ws_data = [
-                ['Bina No', 'Tarih-Saat', 'Enlem', 'Boylam', ...questions.map(q => q.text), 'Fotoğraf Dosyası']
+                ['Bina No', 'Kullanıcı', 'Tarih-Saat', 'Enlem', 'Boylam', ...questions.map(q => q.text), 'Fotoğraf Dosyası']
             ];
             
             allData.forEach((data, index) => {
                 const row = [
                     index + 1,
+                    data.userName || userName,
                     data.datetime,
                     data.lat,
                     data.lng,
@@ -604,10 +799,11 @@
             const ws = XLSX.utils.aoa_to_sheet(ws_data);
             XLSX.utils.book_append_sheet(wb, ws, 'Bina Verileri');
             
-            const timestamp = new Date().getTime();
-            XLSX.writeFile(wb, 'bina_verileri_' + timestamp + '.xlsx');
+            const timestamp = new Date().toISOString().slice(0,19).replace(/:/g, '-');
+            const safeUserName = userName.replace(/\s+/g, '_');
+            const filename = `${safeUserName}_bina_verileri_${timestamp}`;
+            XLSX.writeFile(wb, filename + '.xlsx');
             
-            // Fotoğrafları ZIP olarak indir
             setTimeout(() => {
                 downloadPhotosAsZip(timestamp);
             }, 500);
@@ -615,7 +811,6 @@
         
         // Fotoğrafları ZIP olarak indir
         async function downloadPhotosAsZip(timestamp) {
-            // JSZip kütüphanesini dinamik yükle
             if (typeof JSZip === 'undefined') {
                 const script = document.createElement('script');
                 script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
@@ -633,7 +828,6 @@
             let photoCount = 0;
             allData.forEach((data, index) => {
                 if (data.photo) {
-                    // Base64'ten binary'ye çevir
                     const base64Data = data.photo.split(',')[1];
                     photosFolder.file(`bina_${index + 1}.jpg`, base64Data, {base64: true});
                     photoCount++;
@@ -645,14 +839,15 @@
                 return;
             }
             
-            // ZIP dosyasını oluştur ve indir
+            const safeUserName = userName.replace(/\s+/g, '_');
+            const zipFilename = `${safeUserName}_fotograflar_${timestamp}`;
             zip.generateAsync({type: "blob"}).then(function(content) {
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(content);
-                link.download = 'fotograflar_' + timestamp + '.zip';
+                link.download = zipFilename + '.zip';
                 link.click();
                 
-                alert(`✅ İndirme tamamlandı!\n\n📊 Excel: bina_verileri_${timestamp}.xlsx\n📦 Fotoğraflar: fotograflar_${timestamp}.zip\n\nİki dosyayı da gönderin!`);
+                alert(`✅ İndirme tamamlandı!\n\n📊 Excel: ${safeUserName}_bina_verileri_${timestamp}.xlsx\n📦 Fotoğraflar: ${zipFilename}.zip\n\nİki dosyayı da gönderin!`);
             });
         }
 
